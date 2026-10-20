@@ -1,69 +1,166 @@
-# ✊ Real-time Sign Language Translation with Citizen ASL Dataset 
+# Real-Time ASL Sign Recognition Using MediaPipe and GRU
 
-This project implements a full pipeline to translate sign language into text using pose estimation, deep learning, and a large language model (LLM) for sentence refinement. The live translation system is built using the [Citizen ASL Dataset](https://www.microsoft.com/en-us/research/project/asl-citizen/) and runs in real time with a webcam.
+A real-time American Sign Language (ASL) recognition system that uses webcam input, MediaPipe Holistic landmark extraction, and a Gated Recurrent Unit (GRU) deep learning model to predict signs and display their corresponding labels.
 
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=gJ-PRa88E-M">
-    <img src="demo/asldemo.gif" alt="Live ASL Translation Demo">
-  </a>
-</p>
+This project adapts an existing pose-based ASL recognition pipeline for a college project, with a focus on real-time inference, prediction display, and evaluation of sign recognition performance.
 
-Watch a real-time demo of sign language translation using our trained model and the Citizen ASL dataset.
-> Disclaimer: Not a professional signer, the signing in this demo may not fully follow formal ASL grammar.
+> **Disclaimer:** This is an educational prototype, not a professional sign language translation system. Recognition accuracy can vary depending on the signer, lighting, camera positioning, and similarity between signs. The system is designed to recognize individual signs, not reliably translate complete sentences.
 
 ## Features
-- Pose-based sign language recognition using MediaPipe Holistic
-- Normalization and preprocessing of landmark sequences
-- GRU-based model trained on 200 unique glosses (271 total classes including duplicates) (approx. 80% accuracy on validation)
-- Real-time webcam-based translation with LLM for sentence refinement (OpenAI GPT)
 
+- **Real-time webcam input** using OpenCV.
+- **Pose and landmark extraction** using MediaPipe Holistic.
+- **Sequence-based sign recognition** using a GRU neural network.
+- **Preprocessing of landmark sequences** before model inference.
+- **Prediction display** for recognized sign labels.
+- **Local inference** using a pretrained model, without requiring an OpenAI API key.
+- **Experimental evaluation** using repeated trials of selected ASL signs.
 
-## Setup
+## How It Works
 
-### Requirements
-Make sure to have Python 3.10.17 installed. You can use pyenv or another version manager to install and activate it.
+The system follows a pose-based recognition pipeline:
 
-### Clone the repository
+1. **Video capture:** Captures frames from a webcam.
+2. **Landmark extraction:** MediaPipe Holistic extracts relevant body, hand, and facial landmarks.
+3. **Preprocessing:** Landmark data is processed into a sequence compatible with the trained model.
+4. **Sign classification:** A GRU-based neural network processes the sequence and predicts a class.
+5. **Label decoding:** The predicted class index is mapped to its corresponding sign label.
+6. **Display:** The prediction is shown in the live interface.
+
+## Model and Dataset
+
+### Dataset
+
+The project is based on the [ASL Citizen Dataset](https://www.microsoft.com/en-us/research/project/asl-citizen/), a community-sourced dataset developed for isolated sign language recognition.
+
+**Dataset reference:**
+
+Desai, A., et al. (2023). *ASL Citizen: A Community-Sourced Dataset for Advancing Isolated Sign Language Recognition*. NeurIPS 2023 Datasets and Benchmarks Track.
+
+[Research paper](https://arxiv.org/abs/2304.05934)
+
+### Recognition model
+
+The project uses a pretrained GRU-based sequence classification model.
+
+The current model and its associated label mapping are expected to be available in the `models/` directory:
+
+- `best_model200_new.keras` — GRU model with 209 output classes.
+- `index_to_gloss_200.json` — mapping from model output indices to sign labels.
+
+The model processes sequences of pose-derived features and produces a probability distribution over its output classes. The highest-scoring class is used to obtain the predicted label.
+
+**Important:** The model's output classes and the number of unique signs in the dataset are not necessarily the same. The mapping file must match the specific model checkpoint being loaded.
+
+The model's training provenance and validation performance should be verified against the original training records before reporting them as results for this project.
+
+## Technology Stack
+
+- **Python 3.11**
+- **TensorFlow / Keras** — model inference
+- **MediaPipe Holistic** — landmark extraction
+- **OpenCV** — webcam access and image processing
+- **NumPy** — numerical processing
+- **Jupyter Notebook** — interactive development and execution
+
+Refer to `requirements.txt` for the project's dependency versions.
+
+## Getting Started
+
+### 1. Clone the repository
+
 ```bash
-git clone https://github.com/tobp03/live-asl-translation.git
-cd live-asl-translation
+git clone https://github.com/aryanthu/asl-translation.git
+cd asl-translation
 ```
-### Install Dependencies
-Once your done, in the correct environment:
+
+### 2. Create a virtual environment
+
+Using Python 3.11:
+
 ```bash
+py -3.11 -m venv .venv
+```
+
+Activate the environment on Windows:
+
+```bash
+.venv\Scripts\activate
+```
+
+### 3. Install dependencies
+
+```bash
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### Obtain API Key for LLM
-This project uses [OpenAI GPT API](https://platform.openai.com) for sentence refinement during live translation. You need a valid API key with billing enabled. Crete a file named `.env` in the project root and add the following line:
-```bash
-API_KEY="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+### 4. Verify the model files
+
+Ensure the following files exist:
+
+```text
+models/
+├── best_model200_new.keras
+└── index_to_gloss_200.json
 ```
 
-## 🚀 Usage
-- Full pipeline
-   To train your own model and reproduce the full workflow : Open and run `main_livefeed.ipynb`. This notebook contains all steps from start to finish:
-   1.  Download the [Citizen ASL Dataset](https://www.microsoft.com/en-us/research/project/asl-citizen/)
-   2.  Place the dataset folder in the same directory as `main_livefeed.ipynb` (the project root)
-   3.  Open and run the full pipeline step 1-3 on `main_livefeed.ipynb`
-   4.  Finally, use the trained model for live translation
-- Direct use with Pre-trained model
-  If you prefer to skip training
-  1. Ensure the pre-trained GRU model (`.keras`) is available in the `/models` folder (already provided)
-  2. Open `main_livefeed.ipynb`
-  3. Jump directly to **Step 4** to start live translation using the pre-trained model
-- Preprocessed data and model training is also available on [Kaggle](https://www.kaggle.com/code/tobypu/aslcitizen-top200-training). 
+The model and label mapping must be compatible. If either file is missing or belongs to a different checkpoint, inference may fail or produce incorrect labels.
+
+### 5. Run the live recognition system
+
+Open `main_livefeed.ipynb` from the repository root using Jupyter Notebook or VS Code, select the project's `.venv` Python interpreter, and run the live-inference section.
+
+Use the model and mapping paths configured for the current project. If the notebook still contains the original API-based sentence refinement code, use the local inference path with the API integration disabled.
+
+The pretrained model allows live inference without downloading the complete training dataset. Reproducing the training pipeline, however, requires the relevant dataset, preprocessing outputs, and training configuration.
+
+**Controls:** Press `q` to quit the webcam window. Press `a` to remove the most recent displayed prediction, if supported by the current implementation.
+
+## Evaluation
+
+The model is evaluated through repeated webcam trials using selected sign labels.
+
+For each trial:
+
+1. Select the intended sign.
+2. Perform the sign in front of the webcam.
+3. Record the predicted label.
+4. Mark the trial as correct only when the prediction matches the intended label.
+5. Repeat the procedure across multiple attempts and signs.
+
+Recognition accuracy is calculated as:
+
+\[
+\text{Accuracy} =
+\frac{\text{Correct Predictions}}{\text{Total Trials}}
+\times 100
+\]
+
+Evaluation results should be reported using the actual recorded trials. Performance may differ across signs and signing conditions; overall accuracy alone does not capture every limitation.
+
+## Limitations
+
+- The model recognizes a fixed set of trained classes rather than arbitrary ASL signs.
+- Similar-looking signs may be confused.
+- Performance can vary with lighting, camera angle, signing speed, and landmark detection quality.
+- A predicted label does not guarantee that the intended sign was performed correctly.
+- Isolated sign recognition is different from continuous sign language translation, which also requires temporal segmentation, grammatical interpretation, and sentence-level context.
+- The current system should not be treated as a substitute for a qualified sign language interpreter.
 
 ## References
-- **ASL Citizen Dataset**  
-  Desai, A., Berger, L., Minakov, F. O., Milan, V., Singh, C., Pumphrey, K., Ladner, R. E., Daumé III, H., Lu, A. X., Caselli, N., & Bragg, D.  
-  *ASL Citizen: A Community-Sourced Dataset for Advancing Isolated Sign Language Recognition*.  
-  arXiv preprint arXiv:2304.05934, 2023. [[Paper](https://arxiv.org/abs/2304.05934)]
-  
-- **Keypoint Preprocessing** <br>
-  Roh, K., Lee, H., Hwang, E. J., Cho, S., & Park, J. C. (2024, May). Preprocessing Mediapipe Keypoints with Keypoint Reconstruction and Anchors for Isolated Sign Language Recognition. In *Proceedings of the LREC-COLING   2024 11th Workshop on the Representation and Processing of Sign Languages: Evaluation of Sign Language Resources* (pp. 323–334). [[Paper](https://aclanthology.org/2024.signlang-1.36.pdf)]
-  
-## Related Publication
-This project is related to the research paper:  
-Purbojo, T., & Wijaya, A. (2025). Enhancing Pose-Based Sign Language Recognition: A Comparative Study of Preprocessing Strategies with GRU and LSTM. *Advance Sustainable Science Engineering and Technology*, 7(2), 02502017-02502017. [[Paper](https://journal2.upgris.ac.id/index.php/asset/article/view/1658)]
 
+1. Desai, A., et al. (2023). *ASL Citizen: A Community-Sourced Dataset for Advancing Isolated Sign Language Recognition*. [Paper](https://arxiv.org/abs/2304.05934)
+2. Roh, K., Lee, H., Hwang, E. J., Cho, S., & Park, J. C. (2024). *Preprocessing Mediapipe Keypoints with Keypoint Reconstruction and Anchors for Isolated Sign Language Recognition*. LREC-COLING 2024, Workshop on the Representation and Processing of Sign Languages. [Paper](https://aclanthology.org/2024.signlang-1.36.pdf)
+3. Original project repository: [tobp03/live-asl-translation](https://github.com/tobp03/live-asl-translation)
+4. Original project's [Kaggle training notebook](https://www.kaggle.com/code/tobypu/aslcitizen-top200-training)
+
+## Acknowledgements
+
+This project builds upon the work of the original repository's author and the creators and contributors of the ASL Citizen Dataset.
+
+Please consult the original project's licence and the dataset's terms of use before redistributing code, model files, or dataset-derived material.
+
+---
+
+**Project status:** Educational prototype under evaluation.
