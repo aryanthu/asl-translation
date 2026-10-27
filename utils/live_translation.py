@@ -1,14 +1,9 @@
 #Import python modules
 import numpy as np
-import tensorflow as tf
 from tensorflow.keras.models import load_model
-from openai import OpenAI
 import cv2
-import os
 import mediapipe as mp
 import json
-import threading
-from dotenv import load_dotenv
 from utils import preprocessing_split as preprocessing
 
 ## DEFINE FUNCTIONS
@@ -94,20 +89,16 @@ def preprocess(X):
     return X
 
 
-def get_client(env_path='.env'):
-    load_dotenv(dotenv_path=env_path)
-    client = OpenAI(api_key=os.getenv("API_KEY"))
-    return client
-
 
 # === Main function for live feed translation ====
 def start_live_feed(
         model_path,
         encoder_path,
-        client,
+        client=None,
         threshold=1.2,
         webcam=0,
-        complexity_setting=0
+        complexity_setting=0,
+        min_confidence=0.45
         ):
 
     ##################################################
@@ -192,60 +183,6 @@ def start_live_feed(
             text_y = y + i * line_height
             cv2.putText(frame, word, (x, text_y), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
 
-    def interpret_gloss_sequence(gloss_list,client,max_tokens=30):
-        '''
-        Interpret a list of glosses into a well-written english sentence with LLM (OpenAI GPT)
-
-        Parameters:
-        gloss_list (list of str)    : A list of glosses to be interpreted
-        max_tokens (int)            : The maximum number of tokens to be generated
-        '''
-        nonlocal current_interpretation, interpreting
-
-        gloss_string = " + ".join(gloss_list)
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {"role": "developer", "content": 
-                "You are a sign language interpreter. Convert input into well-formed English. Preserve whether the input is a question or a statement. If it ends with you, it is likely a question. Do not add your own commentary or questions."
-    },
-                {"role": "user", "content": gloss_string}
-            ],
-            stream=True,
-            max_tokens=max_tokens
-        )
-
-        interpretation = ""
-        for chunk in response:
-            content = chunk.choices[0].delta.content
-            if content:
-                interpretation += content
-                current_interpretation = interpretation  # live update
-        interpreting = False
-
-    def show_interpreted_text(frame, text):
-        '''
-        Displays interpreted text (LLM output) as an overlay at the bottom of the video frame
-        '''
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 1
-        thickness = 3
-        color = (0, 255, 255)  # Yellow text
-        bg_color = (50, 50, 50)  # Dark background
-
-        text_size, _ = cv2.getTextSize(text, font, font_scale, thickness)
-        text_w, text_h = text_size
-        text_x = (frame.shape[1] - text_w) // 2
-        text_y = frame.shape[0] - 40
-        # Draw background rectangle
-        cv2.rectangle(frame, (text_x - 20, text_y - text_h - 20),
-                    (text_x + text_w + 20, text_y + 20),
-                    bg_color, -1)
-
-        # Draw interpreted text
-        cv2.putText(frame, text, (text_x, text_y),
-                    font, font_scale, color, thickness, cv2.LINE_AA)
-
     def process_frame(frame,landmark_stored):
         '''
         Process a video frame to extract, preprocess, and store landmarks.
@@ -275,6 +212,7 @@ def start_live_feed(
                              model,
                              counter,
                              threshold,
+                             min_confidence,
                              max_pred=10):
         
         status_text="Not Capturing"
@@ -292,10 +230,15 @@ def start_live_feed(
                     padded_array=preprocessing.pad_video(landmark_array)
                     reshape_array=padded_array.reshape(padded_array.shape[0],-1)
                     model_input=  np.expand_dims(reshape_array, axis=0)
-                    prediction=model.predict(model_input)
-                    predicted_index=np.argmax(prediction)
-                    prediction_result = encoder[str(predicted_index)]
-                    counter=0
+                    prediction = model.predict(model_input, verbose=0)[0]
+                    predicted_index = int(np.argmax(prediction))
+                    confidence = float(prediction[predicted_index])
+                    predicted_label = encoder[str(predicted_index)]
+                    if confidence >= min_confidence:
+                        prediction_result = f"{predicted_label} ({confidence:.0%})"
+                    else:
+                        prediction_result = f"Uncertain: {predicted_label} ({confidence:.0%})"
+                    counter = 0
                     last_predictions.append(prediction_result)
                     if len(last_predictions)>max_pred:
                         last_predictions.pop(0)
@@ -311,8 +254,6 @@ def start_live_feed(
     landmark_stored = []
     counter=0
     ema_score = None
-    current_interpretation = ""
-    interpreting = False
 
     with open(encoder_path, 'r') as f:
         gloss_dict = json.load(f)
@@ -341,7 +282,8 @@ def start_live_feed(
                                                                         encoder,
                                                                         model,
                                                                         counter,
-                                                                        threshold)
+                                                                        threshold,
+                                                                        min_confidence)
             # Draw a filled circle indicator top-left corner
             cv2.circle(frame, (40, 40), 20, status_color, -1)
             # Put status text next to the circle
@@ -351,24 +293,12 @@ def start_live_feed(
             # Draw last 10 predictions at top-left
             if last_predictions:
                 draw_last_predictions(frame, last_predictions, x=10, y=70)
-            # Draw LLM interpretation
-            if current_interpretation:
-                show_interpreted_text(frame, current_interpretation)    
-            #If LLM is running, draw text
-            if interpreting:
-                cv2.putText(frame, "Interpreting...", 
-                            (frame.shape[1] - 220, 30),  # Top-right corner, adjust X for alignment
-                            cv2.FONT_HERSHEY_SIMPLEX, 
-                            0.6,  # Font scale (small)
-                            (255, 0, 0),  # Blue in BGR
-                            1,  # Thin text
-                            cv2.LINE_AA)
             cv2.imshow('MediaPipe Webcam Feed', frame)
 
             #Check for key inputs
             #Remove last prediction with "a" key
 
-            # Check keyboard inputs — OpenAI interpretation disabled
+            # Check keyboard inputs
             key = cv2.waitKey(1) & 0xFF
 
             # Press "a" to remove the last prediction
@@ -383,8 +313,9 @@ def start_live_feed(
     cv2.destroyAllWindows()
 
 
-# client = get_client('/home/toby/Documents/Codes/Python/Sign Transation/.env')
-
-# start_live_feed(model_path='/home/toby/Documents/Codes/Python/Sign Transation/best_model200.keras',
-#                 encoder_path='/home/toby/Documents/Codes/Python/Sign Transation/index_to_gloss_200.json',
-#                 client=client)
+# Example:
+# start_live_feed(
+#     model_path="models/best_model200_new.keras",
+#     encoder_path="models/index_to_gloss_200.json",
+#     min_confidence=0.45
+# )
